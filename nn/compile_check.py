@@ -21,9 +21,10 @@ from pytorch_nndct.apis import torch_quantizer
 from models.GWaveNet2DModified import (
     GWaveNet2DModified,
 )  # adjust to match model_inspector.py
+from models.GWaveNet2DModified_causal_fix import GWaveNet2DModified_causal_fix
 from models.globals import FILTERS, STRIDE, DILATION, DETECTORS
 
-model = GWaveNet2DModified(
+model = GWaveNet2DModified_causal_fix(
     in_channels=len(DETECTORS),
     out_channels=FILTERS,
     kernel_size=2,

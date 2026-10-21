@@ -80,7 +80,7 @@ class ModuleWavenet(nn.Module):
         return x_res, x_skip
 
 
-class GWaveNet2DModified(nn.Module):
+class GWaveNet2DModified_causal_fix(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, dilation, stride):
         super().__init__()
 
@@ -221,7 +221,7 @@ if __name__ == "__main__":
     Lin = 155648
     kernel_size_convolution = 2
 
-    model = GWaveNet2DModified(
+    model = GWaveNet2DModified_causal_fix(
         in_channels=len(DETECTORS),
         out_channels=FILTERS,
         kernel_size=kernel_size_convolution,
