@@ -27,7 +27,7 @@ from models.globals import FILTERS, STRIDE, DILATION, DETECTORS
 # explaination:Tom - SEQ_LEN can be shortened to speed up this check (e.g. 9728 =
 # 155648 / 16). A short input only shows whether the graph structure compiles; the
 # final check must use 155648. Random weights are used, so no checkpoint is loaded.
-SEQ_LEN = 155648
+SEQ_LEN = 155648 // 8
 
 model = GWaveNet2DModified_causal_fix(
     in_channels=len(DETECTORS),
@@ -87,3 +87,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
