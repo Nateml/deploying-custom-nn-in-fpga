@@ -52,14 +52,16 @@ class ModuleWavenet(nn.Module):
     def forward(self, x):
         x_old = x
 
-        x_a = self.conv_dilated(x)
-        x_b = self.conv_dilated(x)
+        # explaination:Tom - conv_dilated and batchnorm used to be called twice on
+        # the same input with shared weights, so x_a and x_b were identical. In the
+        # quantized graph that gave the input transpose two fix ops, which the DPU
+        # compiler rejects (XCOM_FRONTEND_GRAPH_INVALID_STRUCTURE). Now they are
+        # computed once; the output is unchanged and the trained weights still load.
+        x_a = self.batchnorm(self.conv_dilated(x))
 
-        x_a = self.batchnorm(x_a)
-        x_b = self.batchnorm(x_b)
-
+        # explaination:Tom - the same x_a now feeds both gate activations (was x_a / x_b).
         # pixel gate
-        x_skip = self.gate_tanh(x_a) * self.gate_sigmoid(x_b)
+        x_skip = self.gate_tanh(x_a) * self.gate_sigmoid(x_a)
         x_skip = self.conv1x1(x_skip)
 
         # skip-connection
@@ -81,7 +83,15 @@ class ModuleWavenet(nn.Module):
 
 
 class GWaveNet2DModified_causal_fix(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, dilation, stride):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        dilation,
+        stride,
+        input_len=155648,
+    ):
         super().__init__()
 
         self.Mod0 = ModuleWavenet(
@@ -140,7 +150,10 @@ class GWaveNet2DModified_causal_fix(nn.Module):
         )
 
         # Calculating skip lengths for alignment in the forward pass
-        lengths = self._skip_lengths(in_channels=3, input_len=155648)
+        # explaination:Tom - input_len is now a constructor argument (default unchanged:
+        # 155648) so the compile check can use a shorter input. fc1's size follows
+        # target_len automatically. A checkpoint only fits the length it was trained with.
+        lengths = self._skip_lengths(in_channels=in_channels, input_len=input_len)
         self.target_len = lengths[-1]  # 1216
         self.skip_starts = [n - self.target_len for n in lengths[:-1]]
 
@@ -173,13 +186,13 @@ class GWaveNet2DModified_causal_fix(nn.Module):
         return lengths
 
     def forward(self, x):
-        # reshape input tensor to add dummy height dimension
-        x = x.view(
-            x.size(0),
-            x.size(1),
-            x.size(-1),
-            1,
-        )
+        # explaination:Tom - the view() that added the dummy width dimension is
+        # replaced by this check. Preferred: feed (N, C, L, 1) directly (reshape in
+        # data loading) so no view/reshape ends up in the DPU graph and can become a
+        # transpose. A 3-D (N, C, L) input is still accepted for the old pipeline;
+        # dim() is static when tracing, so the branch costs nothing at compile time.
+        if x.dim() == 3:
+            x = x.unsqueeze(-1)
 
         x, xs0 = self.Mod0(x)
         x, xs1 = self.Mod1(x)

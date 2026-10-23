@@ -24,19 +24,25 @@ from models.GWaveNet2DModified import (
 from models.GWaveNet2DModified_causal_fix import GWaveNet2DModified_causal_fix
 from models.globals import FILTERS, STRIDE, DILATION, DETECTORS
 
+# explaination:Tom - SEQ_LEN can be shortened to speed up this check (e.g. 9728 =
+# 155648 / 16). A short input only shows whether the graph structure compiles; the
+# final check must use 155648. Random weights are used, so no checkpoint is loaded.
+SEQ_LEN = 155648
+
 model = GWaveNet2DModified_causal_fix(
     in_channels=len(DETECTORS),
     out_channels=FILTERS,
     kernel_size=2,
     dilation=DILATION,
     stride=STRIDE,
+    input_len=SEQ_LEN,
 )  # same constructor arguments as in model_inspector.py
 # Optional: load trained weights (not needed for a compile check)
 # model.load_state_dict(torch.load("path/to/weights.pt", map_location="cpu"))
 
-# Input shape: (1, 3, 155648) while the model still has the view() at the start.
-# Change to (1, 3, 155648, 1) once the reshape has moved into data loading.
-INPUT_SHAPE = (1, 3, 155648)
+# explaination:Tom - input is now (N, C, L, 1) because the reshape lives in data
+# loading instead of the model's forward(), keeping view/transpose ops out of the DPU graph.
+INPUT_SHAPE = (1, 3, SEQ_LEN, 1)
 
 # ---------------------------------------------------------------------------
 # 2. Quantize
