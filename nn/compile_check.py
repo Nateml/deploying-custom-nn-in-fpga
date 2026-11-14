@@ -16,27 +16,18 @@ from pytorch_nndct.apis import torch_quantizer
 
 # ---------------------------------------------------------------------------
 # 1. Build the model exactly as in model_inspector.py.
-#    Copy the import and constructor lines from there and replace this block.
+#    The architecture comes from models/configs/<MODEL_NAME>.yaml.
 # ---------------------------------------------------------------------------
-from models.GWaveNet2DModified import (
-    GWaveNet2DModified,
-)  # adjust to match model_inspector.py
-from models.GWaveNet2DModified_causal_fix import GWaveNet2DModified_causal_fix
-from models.globals import FILTERS, STRIDE, DILATION, DETECTORS
+from models.config import build_model
+
+MODEL_NAME = "GWaveNet2DModified_causal_fix"  # same as in model_inspector.py
 
 # explaination:Tom - SEQ_LEN can be shortened to speed up this check (e.g. 9728 =
 # 155648 / 16). A short input only shows whether the graph structure compiles; the
 # final check must use 155648. Random weights are used, so no checkpoint is loaded.
 SEQ_LEN = 155648 // 8
 
-model = GWaveNet2DModified_causal_fix(
-    in_channels=len(DETECTORS),
-    out_channels=FILTERS,
-    kernel_size=2,
-    dilation=DILATION,
-    stride=STRIDE,
-    input_len=SEQ_LEN,
-)  # same constructor arguments as in model_inspector.py
+model, _ = build_model(MODEL_NAME, input_len=SEQ_LEN)
 # Optional: load trained weights (not needed for a compile check)
 # model.load_state_dict(torch.load("path/to/weights.pt", map_location="cpu"))
 
@@ -87,4 +78,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

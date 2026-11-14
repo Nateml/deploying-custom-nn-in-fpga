@@ -169,18 +169,14 @@ class GWaveNet2DModified(nn.Module):
 
 
 if __name__ == "__main__":
-    from globals import DETECTORS, DILATION, FILTERS, STRIDE
+    from config import load_config
+    from globals import DETECTORS
     from torchsummary import summary
 
     Lin = 155648
-    kernel_size_convolution = 2
 
-    model = GWaveNet2DModified(
-        in_channels=len(DETECTORS),
-        out_channels=FILTERS,
-        kernel_size=kernel_size_convolution,
-        stride=STRIDE,
-        dilation=DILATION,
-    )
+    config = load_config("GWaveNet2DModified")
+    config.pop("pos_weight")
+    model = GWaveNet2DModified(in_channels=len(DETECTORS), **config)
 
     summary(model, (len(DETECTORS), Lin))

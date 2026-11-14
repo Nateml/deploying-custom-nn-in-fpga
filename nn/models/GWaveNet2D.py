@@ -167,19 +167,16 @@ class GWaveNet2D(nn.Module):
 
 
 if __name__ == "__main__":
-    from globals import DETECTORS, DILATION, FILTERS, KERNEL_SIZE_CONVOLUTION, STRIDE
+    from config import load_config
+    from globals import DETECTORS
     from torchsummary import summary
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     Lin = 155648
 
-    model = GWaveNet2D(
-        in_channels=len(DETECTORS),
-        out_channels=FILTERS,
-        kernel_size=KERNEL_SIZE_CONVOLUTION,
-        stride=STRIDE,
-        dilation=DILATION,
-    ).to(device)
+    config = load_config("GWaveNet2D")
+    config.pop("pos_weight")
+    model = GWaveNet2D(in_channels=len(DETECTORS), **config).to(device)
 
     summary(model, (len(DETECTORS), Lin))

@@ -1,0 +1,10 @@
+# Architecture of GWaveNet2DModified_causal_fix and its training loss weight.
+# Loaded by models/config.py; used by main.py, evaluate.py, distill.py,
+# compile_check.py and model_inspector.py.
+out_channels: 64   # filters
+kernel_size: 2
+stride: 2
+# module i uses dilation**i. With 2, vai_c_xir aborts with an unlabeled FATAL
+# error (nn/compile.log); with 1 the whole model compiles onto one DPU subgraph.
+dilation: 1
+pos_weight: 0.1    # BCEWithLogitsLoss pos_weight

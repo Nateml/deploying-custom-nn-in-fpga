@@ -1,0 +1,3 @@
+# Architecture of GregNet (no constructor arguments) and its training loss weight.
+# Loaded by models/config.py; used by main.py, evaluate.py and distill.py.
+pos_weight: 0.4  # BCEWithLogitsLoss pos_weight

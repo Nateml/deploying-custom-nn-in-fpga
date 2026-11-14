@@ -20,27 +20,18 @@ from torchsummary import summary
 from models.globals import (
     DATA_DIR,
     DETECTORS,
-    DILATION,
     EARLY_STOPPING_MIN_DELTA,
     EARLY_STOPPING_PATIENCE,
     EPOCHS,
     FILENAME_ADD,
-    FILTERS,
     FOLDER,
-    KERNEL_SIZE_CONVOLUTION,
     LEARNING_RATE,
     MINIBATCH_SIZE,
     MODEL,
     OPTIMIZER_NAME,
     OUTPUT_DIR,
-    STRIDE,
 )
-from models.GregNet import GregNet
-from models.GregNet2D import GregNet2D
-from models.GregNet2DModified import GregNet2DModified
-from models.GWaveNet import GWaveNet
-from models.GWaveNet2D import GWaveNet2D
-from models.GWaveNet2DModified import GWaveNet2DModified
+from models.config import MODEL_NAMES, build_model, load_config
 from training.generate_outputs import (
     plot_flops,
     save_flop_text,
@@ -57,9 +48,12 @@ warnings.simplefilter("error", UserWarning)
 random.seed(42)
 cmap = "RdPu"
 
+# architecture and loss weight from models/configs/<MODEL>.yaml
+model_config = load_config(MODEL)
+
 if os.path.exists(DATA_DIR):
     d = "cluster"
-    filters = FILTERS
+    filters = model_config.get("out_channels")
 else:
     d = "pc"
     filters = 4
@@ -76,10 +70,7 @@ elif d == "cluster":
 Lin = 155648
 
 # loss function
-if MODEL == "GWaveNet" or MODEL == "GWaveNet2D" or MODEL == "GWaveNet2DModified":
-    loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.1))
-elif MODEL == "GregNet" or MODEL == "GregNet2D" or MODEL == "GregNet2DModified":
-    loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.4))
+loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(model_config["pos_weight"]))
 l = "BCEWithLogitsLoss"
 
 if d == "pc":
@@ -101,7 +92,7 @@ elif MODEL == "PaperNetModified":
 elif MODEL == "WavenetSimple":
     filename = f"{MODEL}_{num_epochs}epochs_{LEARNING_RATE}lr_{filters}filters_{KERNEL_SIZE_CONVOLUTION}conv_{DILATION}dilation_{STRIDE}stride_{DROPOUT}dropout_{ACTIVATION}activation_{MINIBATCH_SIZE}minibatch_{OPTIMIZER_NAME}optimizer"  # _{EARLY_STOPPING_MIN_DELTA}early_stopping_delta_{EARLY_STOPPING_PATIENCE}patience"
 elif MODEL == "GWaveNet" or MODEL == "GWaveNet2D" or MODEL == "GWaveNet2DModified":
-    filename = f"{MODEL}_{num_epochs}epochs_{LEARNING_RATE}lr_{filters}filters_{KERNEL_SIZE_CONVOLUTION}conv_{DILATION}dilation_{MINIBATCH_SIZE}minibatch_{OPTIMIZER_NAME}optimizer"  # _{EARLY_STOPPING_MIN_DELTA}early_stopping_delta_{EARLY_STOPPING_PATIENCE}patience"
+    filename = f"{MODEL}_{num_epochs}epochs_{LEARNING_RATE}lr_{filters}filters_{model_config['kernel_size']}conv_{model_config['dilation']}dilation_{MINIBATCH_SIZE}minibatch_{OPTIMIZER_NAME}optimizer"  # _{EARLY_STOPPING_MIN_DELTA}early_stopping_delta_{EARLY_STOPPING_PATIENCE}patience"
 else:
     filename = f"{MODEL}_{num_epochs}epochs_{LEARNING_RATE}lr_{filters}filters_{KERNEL_SIZE_CONVOLUTION}conv_{KERNEL_SIZE_MAXPOOL}maxpool_{DILATION}dilation_{PADDING}padding_{STRIDE}stride_{DROPOUT}dropout_{ACTIVATION}activation_{MINIBATCH_SIZE}minibatch_{OPTIMIZER_NAME}optimizer"  # _{LR_DECAY_FACTOR}decayfactor_{LR_DECAY_PATIENCE}patience_{EARLY_STOPPING_MIN_DELTA}early_stopping_delta_{EARLY_STOPPING_PATIENCE}patience"
 
@@ -247,61 +238,12 @@ elif MODEL == "PaperNetModified":
 elif MODEL == "ModifiedPaperNet":
     model = ModifiedPaperNet(d=d)
     initial_model = ModifiedPaperNet(d=d)
-elif MODEL == "GregNet":
-    model = GregNet()
-    initial_model = GregNet()
-elif MODEL == "GregNet2D":
-    model = GregNet2D()
-    initial_model = GregNet2D()
-elif MODEL == "GregNet2DModified":
-    model = GregNet2DModified()
-    initial_model = GregNet2DModified()
-elif MODEL == "GWaveNet":
-    model = GWaveNet(
-        in_channels=len(DETECTORS),
-        dilation=DILATION,
-        out_channels=filters,
-        kernel_size=KERNEL_SIZE_CONVOLUTION,
-        stride=STRIDE,
-    )
-    initial_model = GWaveNet(
-        in_channels=len(DETECTORS),
-        dilation=DILATION,
-        out_channels=filters,
-        kernel_size=KERNEL_SIZE_CONVOLUTION,
-        stride=STRIDE,
-    )
-elif MODEL == "GWaveNet2D":
-    model = GWaveNet2D(
-        in_channels=len(DETECTORS),
-        dilation=DILATION,
-        out_channels=filters,
-        kernel_size=KERNEL_SIZE_CONVOLUTION,
-        stride=STRIDE,
-    )
-    initial_model = GWaveNet2D(
-        in_channels=len(DETECTORS),
-        dilation=DILATION,
-        out_channels=filters,
-        kernel_size=KERNEL_SIZE_CONVOLUTION,
-        stride=STRIDE,
-    )
-elif MODEL == "GWaveNet2DModified":
-    kernel_size_convolution = 2
-    model = GWaveNet2DModified(
-        in_channels=len(DETECTORS),
-        dilation=DILATION,
-        out_channels=filters,
-        kernel_size=kernel_size_convolution,
-        stride=STRIDE,
-    )
-    initial_model = GWaveNet2DModified(
-        in_channels=len(DETECTORS),
-        dilation=DILATION,
-        out_channels=filters,
-        kernel_size=kernel_size_convolution,
-        stride=STRIDE,
-    )
+elif MODEL in MODEL_NAMES:
+    # GregNet has no constructor arguments; GWaveNet width follows `filters`
+    # (smaller in pc mode)
+    overrides = {} if MODEL.startswith("GregNet") else {"out_channels": filters}
+    model, _ = build_model(MODEL, **overrides)
+    initial_model, _ = build_model(MODEL, **overrides)
 
 # model = nn.DataParallel(model)
 # initial_model = nn.DataParallel(initial_model)

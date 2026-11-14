@@ -181,7 +181,8 @@ class GWaveNet(nn.Module):
 if __name__ == "__main__":
     import os
 
-    from globals import DETECTORS, DILATION, FILTERS, KERNEL_SIZE_CONVOLUTION, STRIDE
+    from config import load_config
+    from globals import DETECTORS
     from torchsummary import summary
     from torchviz import make_dot
 
@@ -190,19 +191,15 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = GWaveNet(
-        in_channels=len(DETECTORS),
-        out_channels=FILTERS,
-        kernel_size=KERNEL_SIZE_CONVOLUTION,
-        stride=STRIDE,
-        dilation=DILATION,
-    ).to(device)
+    config = load_config("GWaveNet")
+    config.pop("pos_weight")
+    model = GWaveNet(in_channels=len(DETECTORS), **config).to(device)
 
     summary(model, (3, Lin))
 
     x = torch.randn(1, 3, Lin).to(device)
     flops = FlopCountAnalysis(model, x)
-    print(f"Flops: {flops.total()/1e9} G")
+    print(f"Flops: {flops.total() / 1e9} G")
 
     yhat = model(x)
     make_dot(yhat, params=dict(list(model.named_parameters()))).render(

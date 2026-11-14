@@ -1,0 +1,8 @@
+# Architecture of GWaveNet and its training loss weight.
+# Loaded by models/config.py; used by main.py, evaluate.py and distill.py.
+# A checkpoint only loads/runs with the settings it was trained with.
+out_channels: 64   # filters
+kernel_size: 16
+stride: 2
+dilation: 2        # module i uses dilation**i
+pos_weight: 0.1    # BCEWithLogitsLoss pos_weight
