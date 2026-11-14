@@ -44,7 +44,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
 from data_prep import into_dataloader
-from evaluate import MODELS, build_model, model_from_filename
+from evaluate import MODELS, build_model, model_from_filename, roc_auc
 from models.config import load_config
 from models.globals import FOLDER
 
@@ -99,6 +99,8 @@ def run_epoch(model, loaders, device, args, pos_weight, optimizer=None):
     n = agree = 0
     # per minibatch and per sample, for the stdevs (as in train_model)
     losses, correct = [], []
+    # per sample, for the AUCs
+    labels, student_logits, teacher_logits = [], [], []
     with torch.set_grad_enabled(optimizer is not None):
         for loader in loaders:
             for X, y, t in loader:
@@ -118,12 +120,20 @@ def run_epoch(model, loaders, device, args, pos_weight, optimizer=None):
                 correct.append((pred == y).cpu().numpy())
                 agree += (pred == (t > 0).float()).sum().item()
                 n += len(y)
+                labels.append(y.cpu().numpy())
+                student_logits.append(s.detach().cpu().numpy())
+                teacher_logits.append(t.cpu().numpy())
     correct = np.concatenate(correct)
+    labels = np.concatenate(labels)
     stats = {name: value / n for name, value in totals.items()}
     stats["loss_std"] = np.std(losses, ddof=1) if len(losses) > 1 else 0.0
     stats["acc"] = 100 * np.mean(correct)
     stats["acc_std"] = 100 * np.std(correct, ddof=1)
     stats["agree"] = 100 * agree / n
+    # AUC does not depend on the 0.5 threshold, so it shows progress while every
+    # prediction is still on the same side of it
+    stats["auc"] = roc_auc(labels, np.concatenate(student_logits))
+    stats["teacher_auc"] = roc_auc(labels, np.concatenate(teacher_logits))
     return stats
 
 
@@ -155,7 +165,8 @@ def save_history(history, stem):
 def fmt(stats):
     return (
         f"loss {stats['loss']:.4f} (soft {stats['soft']:.4f}, hard {stats['hard']:.4f}), "
-        f"acc {stats['acc']:.2f}%, teacher agreement {stats['agree']:.2f}%"
+        f"acc {stats['acc']:.2f}%, AUC {stats['auc']:.4f} "
+        f"(teacher {stats['teacher_auc']:.4f}), teacher agreement {stats['agree']:.2f}%"
     )
 
 

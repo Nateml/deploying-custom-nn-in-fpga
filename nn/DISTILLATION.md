@@ -77,7 +77,7 @@ The checkpoint holds `model_state_dict` (so `evaluate.py` can load it), plus `mo
 
 After **every epoch** the full history so far is written next to the checkpoint, so runs that are still going or were stopped can be plotted too:
 
-- **`<output>_history.csv`:** one row per epoch with `stage`, `folders`, `epoch`, `lr`, and for both `train_` and `val_`: `loss`, `soft`, `hard`, `loss_std`, `acc`, `acc_std`, `agree`. The `best` column marks epochs that improved the stage's best validation loss (the last `True` in a stage is the model that was kept).
+- **`<output>_history.csv`:** one row per epoch with `stage`, `folders`, `epoch`, `lr`, and for both `train_` and `val_`: `loss`, `soft`, `hard`, `loss_std`, `acc`, `acc_std`, `agree`, `auc`, `teacher_auc`. The `best` column marks epochs that improved the stage's best validation loss (the last `True` in a stage is the model that was kept).
 
   ```python
   import pandas as pd
@@ -99,6 +99,7 @@ How to read these files:
 - The soft loss can't reach 0. Its lowest possible value is the entropy of the teacher's outputs, so compare runs on **accuracy, teacher agreement and test AUC**, not on the loss value.
 - Losses from runs with different `T` or `alpha` can't be compared directly, and neither can their early-stopping behaviour.
 - *Teacher agreement* is how often the student and teacher pick the same class. A high agreement with low accuracy means the student is copying the teacher's mistakes.
+- Accuracy and agreement only change when outputs cross the 0.5 threshold. A fresh student often first calls everything noise (`pos_weight` 0.1 makes that cheap) and stays at exactly 50% for several epochs while it is already learning. *AUC* measures how well the outputs rank signals above noise, whatever the threshold, so it shows that progress; *teacher AUC* (on the same samples) is the reference to aim for.
 
 **What limits the student**
 - The teacher scores about 79.6% test accuracy. Distillation copies its mistakes as well as its knowledge, so don't expect the student to beat it by much, if at all.
