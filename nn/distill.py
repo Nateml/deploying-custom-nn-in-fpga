@@ -274,6 +274,7 @@ def main():
         stages = range(args.folders + 1)
     output = args.output or f"../models/{filename}.pt"
     stem = os.path.splitext(output)[0]
+    os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
     cache = TeacherCache(teacher, device, args.minibatch_size)
     rng = np.random.default_rng(42)
     history = []

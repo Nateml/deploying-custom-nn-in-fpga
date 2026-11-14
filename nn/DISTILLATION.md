@@ -22,6 +22,9 @@ vai python distill.py --folders 0 --epochs 1 --train-batches 1 --val-batches 1 -
 
 # full run on a GPU node
 condor_submit condor/job.sub 'args=distill.py --filters 16'
+
+# short lr sweep (1e-5, 3e-5, 1e-4, 3e-4, 1e-3), about 1 h per job -> ../models/lr_sweep/
+condor_submit condor/lr_sweep.sub
 ```
 
 Teacher and student are each built from their own `models/configs/<name>.yaml` (e.g. the teacher with dilation 2, the causal_fix student with dilation 1); `--filters` overrides the student's `out_channels`, and the full student config is printed and saved in the checkpoint.

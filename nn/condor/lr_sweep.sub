@@ -1,0 +1,20 @@
+# Short learning-rate sweep for distill.py, one GPU job per lr (see DISTILLATION.md).
+# One no-curriculum stage on all folders with 8 train files per folder (1/5 of the data)
+# and all 5 val files; compare the runs on val_auc in the history CSVs.
+# Submit from nn/:
+#   condor_submit condor/lr_sweep.sub
+executable       = condor/run.sh
+arguments        = distill.py --no-curriculum --train-batches 8 --epochs 15 --patience 3 --lr $(lr) --output ../models/lr_sweep/distilled_$(lr)lr.pt
++SingularityImage = "/data/gravwav/nmacdona/containers/vitis-ai-pytorch-gpu-3.5.0.sif"
++JobCategory     = "short"
+accounting_group = gravwav
+
+request_gpus     = 1
+request_cpus     = 4
+request_memory   = 16G
+
+logdir           = /data/gravwav/nmacdona/earlywarningfpgas/output/condor
+output           = $(logdir)/$(ClusterId).$(ProcId).out
+error            = $(logdir)/$(ClusterId).$(ProcId).err
+log              = $(logdir)/$(ClusterId).log
+queue lr in (1e-5, 3e-5, 1e-4, 3e-4, 1e-3)
