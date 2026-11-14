@@ -1,5 +1,6 @@
 import gc
 import os
+from concurrent.futures import ThreadPoolExecutor
 from telnetlib import DET
 import time
 from xml.sax.handler import DTDHandler
@@ -20,6 +21,26 @@ from models.globals import (
     OUTPUT_DIR,
 )
 from training.utils import print_or_output
+
+
+def prefetched(load, args_list):
+    """Yield load(*args) for each args in args_list, reading the next one in a
+    background thread while the caller works on the current one.
+
+    Hides the file reading time behind training. At most two loads are in memory
+    at once (the current one and the next).
+    """
+    args_list = list(args_list)
+    if not args_list:
+        return
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(load, *args_list[0])
+        for next_args in args_list[1:]:
+            result = future.result()
+            future = pool.submit(load, *next_args)
+            yield result
+            del result
+        yield future.result()
 
 
 def into_dataloader(d, out_file, batch, batch_n, minibatch_size, current_folder):

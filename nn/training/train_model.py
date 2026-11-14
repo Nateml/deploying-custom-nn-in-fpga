@@ -7,7 +7,7 @@ import numpy as np
 import psutil
 import torch
 
-from data_prep import into_dataloader
+from data_prep import into_dataloader, prefetched
 from models.globals import (
     FOLDER,
     LEARNING_RATE,
@@ -88,9 +88,25 @@ def train_model(
             y_full_epoch = torch.empty(0)
             loss_full_epoch = torch.empty(0)
 
+            n_samples_train = int(10000 * 0.8)
+            # reads the next data file in the background while training on the current one
+            train_dataloaders = prefetched(
+                lambda f, b: into_dataloader(
+                    d,
+                    out_file,
+                    batch=f"train",
+                    batch_n=b,
+                    minibatch_size=minibatch_size,
+                    current_folder=f,
+                ),
+                [
+                    (f, b)
+                    for f in range(0, current_folder + 1)
+                    for b in range(int(n_samples_train / BATCH_ARRAY_SIZE))
+                ],
+            )
             for current_current_folder in range(0, current_folder + 1):
 
-                n_samples_train = int(10000 * 0.8)
                 for batch_n in range(int(n_samples_train / BATCH_ARRAY_SIZE)):
                     print_or_output(
                         f"Train batch {batch_n + 1}/{int(n_samples_train/ BATCH_ARRAY_SIZE)}",
@@ -99,14 +115,7 @@ def train_model(
                     )
 
                     model.train()
-                    train_dataloader = into_dataloader(
-                        d,
-                        out_file,
-                        batch=f"train",
-                        batch_n=batch_n,
-                        minibatch_size=minibatch_size,
-                        current_folder=current_current_folder,
-                    )
+                    train_dataloader = next(train_dataloaders)
 
                     for X, y in train_dataloader:
                         total_n_flops += n_flops * minibatch_size
@@ -187,6 +196,21 @@ def train_model(
             loss_full_epoch = torch.empty(0)
             probabilities_full_epoch = torch.empty(0)
 
+            validation_dataloaders = prefetched(
+                lambda f, b: into_dataloader(
+                    d,
+                    out_file,
+                    batch="validation",
+                    batch_n=b,
+                    minibatch_size=TEST_MINIBATCH_SIZE,
+                    current_folder=f,
+                ),
+                [
+                    (f, b)
+                    for f in range(0, current_folder + 1)
+                    for b in range(int(n_samples_val / BATCH_ARRAY_SIZE))
+                ],
+            )
             for current_current_folder in range(0, current_folder + 1):
                 for batch_n in range(
                     int(n_samples_val / BATCH_ARRAY_SIZE)
@@ -199,14 +223,7 @@ def train_model(
                     )
 
                     with torch.no_grad():
-                        validation_dataloader = into_dataloader(
-                            d,
-                            out_file,
-                            batch="validation",
-                            batch_n=batch_n,
-                            minibatch_size=TEST_MINIBATCH_SIZE,
-                            current_folder=current_current_folder,
-                        )
+                        validation_dataloader = next(validation_dataloaders)
 
                         for X, y in validation_dataloader:
                             X, y = X.to(device), y.to(device)
@@ -408,6 +425,21 @@ def train_model(
     # n_samples_test = 2200
     n_samples_test = int(10000 * 0.1)
 
+    test_dataloaders = prefetched(
+        lambda f, b: into_dataloader(
+            d,
+            out_file,
+            batch="test",
+            batch_n=b,
+            minibatch_size=TEST_MINIBATCH_SIZE,
+            current_folder=f,
+        ),
+        [
+            (f, b)
+            for f in range(0, FOLDER + 1)
+            for b in range(int(n_samples_test / BATCH_ARRAY_SIZE))
+        ],
+    )
     for current_folder in range(0, FOLDER + 1):
         for batch_n in range(
             int(n_samples_test / BATCH_ARRAY_SIZE)
@@ -420,14 +452,7 @@ def train_model(
             )
 
             with torch.no_grad():
-                test_dataloader = into_dataloader(
-                    d,
-                    out_file,
-                    batch="test",
-                    batch_n=batch_n,
-                    minibatch_size=TEST_MINIBATCH_SIZE,
-                    current_folder=current_folder,
-                )
+                test_dataloader = next(test_dataloaders)
 
                 for X, y in test_dataloader:
                     X, y = X.to(device), y.to(device)

@@ -43,7 +43,7 @@ import torch
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from data_prep import into_dataloader
+from data_prep import into_dataloader, prefetched
 from evaluate import MODELS, build_model, model_from_filename, roc_auc
 from models.config import load_config
 from models.globals import FOLDER
@@ -83,13 +83,19 @@ class TeacherCache:
             out.append(self.teacher(x).squeeze(1).cpu())
         return torch.cat(out)
 
-    def dataloader(self, split, folder, batch_n, minibatch_size):
-        X, y = into_dataloader("pc", "", split, batch_n, 1, folder).dataset.tensors
-        key = (split, folder, batch_n)
-        if key not in self.logits:
-            self.logits[key] = self._teacher_logits(X)
-        data = TensorDataset(X, y.float(), self.logits[key])
-        return DataLoader(data, shuffle=split == "train", batch_size=minibatch_size)
+    def dataloaders(self, split, files, minibatch_size):
+        """One DataLoader per (folder, batch_n) in files. The next file is read in
+        the background while the current one is used."""
+
+        def load(folder, batch_n):
+            return into_dataloader("pc", "", split, batch_n, 1, folder).dataset.tensors
+
+        for (folder, batch_n), (X, y) in zip(files, prefetched(load, files)):
+            key = (split, folder, batch_n)
+            if key not in self.logits:
+                self.logits[key] = self._teacher_logits(X)
+            data = TensorDataset(X, y.float(), self.logits[key])
+            yield DataLoader(data, shuffle=split == "train", batch_size=minibatch_size)
 
 
 def run_epoch(model, loaders, device, args, pos_weight, optimizer=None):
@@ -285,15 +291,13 @@ def main():
             ]
             if args.no_curriculum:
                 rng.shuffle(train_files)
-            # loaders are generators so only one data file is in memory at a time
-            train_loaders = (
-                cache.dataloader("train", f, b, args.minibatch_size)
-                for f, b in train_files
-            )
-            val_loaders = (
-                cache.dataloader("validation", f, b, args.minibatch_size)
-                for f in range(stage + 1)
-                for b in range(args.val_batches)
+            val_files = [
+                (f, b) for f in range(stage + 1) for b in range(args.val_batches)
+            ]
+            # loaders are generators so at most two data files are in memory at a time
+            train_loaders = cache.dataloaders("train", train_files, args.minibatch_size)
+            val_loaders = cache.dataloaders(
+                "validation", val_files, args.minibatch_size
             )
             train = run_epoch(
                 student, train_loaders, device, args, pos_weight, optimizer
