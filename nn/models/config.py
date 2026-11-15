@@ -21,15 +21,17 @@ def load_config(name):
         return yaml.safe_load(f) or {}
 
 
-def build_model(name, **overrides):
+def build_model(name, config=None, **overrides):
     """Build `name` from its config. Returns (model, pos_weight).
 
+    config replaces the yaml config, e.g. the config saved in a checkpoint (keys it
+    lacks take the constructor defaults, so older checkpoints still fit).
     overrides replace config values, e.g. out_channels=16 or input_len=19456.
     Imports models.<name>, so run from nn/.
     """
     from models.globals import DETECTORS
 
-    kwargs = {**load_config(name), **overrides}
+    kwargs = {**(load_config(name) if config is None else config), **overrides}
     pos_weight = kwargs.pop("pos_weight")
     if not name.startswith("GregNet"):
         kwargs["in_channels"] = len(DETECTORS)

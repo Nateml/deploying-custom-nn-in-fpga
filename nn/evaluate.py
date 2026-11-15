@@ -106,9 +106,10 @@ def main():
     torch.set_num_threads(os.cpu_count())
     print(f"Model: {name}, device: {device}")
 
-    overrides = {} if args.filters is None else {"out_channels": args.filters}
-    model, pos_weight = build_model(name, **overrides)
     checkpoint = torch.load(args.checkpoint, map_location=device)
+    overrides = {} if args.filters is None else {"out_channels": args.filters}
+    # distill.py checkpoints carry the architecture they were trained with
+    model, pos_weight = build_model(name, checkpoint.get("config"), **overrides)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device).eval()
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weight, device=device))

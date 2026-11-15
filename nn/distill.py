@@ -262,6 +262,8 @@ def main():
     architecture = f"{args.filters}filters_"
     if "dilation" in student_config:
         architecture += f"{student_config['dilation']}dilation_"
+    if student_config.get("residual_fix"):
+        architecture += "resfix_"
     filename = (
         f"distilled_{args.student}_{architecture}from_{teacher_name}_"
         f"{args.temperature}T_{args.alpha}alpha_{args.lr}lr_{args.minibatch_size}minibatch"

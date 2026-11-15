@@ -29,10 +29,12 @@ condor_submit condor/lr_sweep.sub
 
 Teacher and student are each built from their own `models/configs/<name>.yaml` (e.g. the teacher with dilation 2, the causal_fix student with dilation 1); `--filters` overrides the student's `out_channels`, and the full student config is printed and saved in the checkpoint.
 
-Then evaluate the student like any other checkpoint. Pass the same `--filters` that the student was trained with:
+The causal_fix config sets `residual_fix: true` (residual connections in Mod1–6; before 2026-11-15 only Mod5 had one, and those checkpoints have no `resfix_` in their name). Checkpoints keep working either way, because `evaluate.py` builds the student from the config saved in its checkpoint.
+
+Then evaluate the student like any other checkpoint. The architecture, including `--filters`, comes from the checkpoint:
 
 ```bash
-vai python evaluate.py ../models/curriculum_distilled_<...>.pt --filters 16
+vai python evaluate.py ../models/curriculum_distilled_<...>.pt
 ```
 
 If you used a custom `--output` name, also pass `--model GWaveNet2DModified_causal_fix`, because `evaluate.py` reads the model class from the filename.

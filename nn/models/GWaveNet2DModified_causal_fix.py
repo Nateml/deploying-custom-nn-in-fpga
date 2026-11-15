@@ -23,15 +23,31 @@ class CausalConv2d(nn.Module):
 
 
 class ModuleWavenet(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, dilation):
+    def __init__(
+        self, in_channels, out_channels, kernel_size, stride, dilation, residual_fix
+    ):
         super(ModuleWavenet, self).__init__()
 
         self.in_channels = in_channels
         self.out_channels = out_channels
 
-        self.res_down = nn.Conv2d(
-            in_channels, out_channels, kernel_size=1, stride=stride
-        )
+        if residual_fix:
+            # residual whenever the input already has the module's output width (32,
+            # after conv1x1), i.e. in every module but Mod0, as in GWaveNet2D
+            self.has_residual = in_channels == 32
+            self.res_down = (
+                nn.Conv2d(in_channels, 32, kernel_size=1, stride=stride)
+                if self.has_residual
+                else None
+            )
+        else:
+            # original: in_channels (32) never equals out_channels (64) after the
+            # conv1x1 bottleneck, so only Mod5 (32 -> 32) has a residual. res_down is
+            # still created everywhere so old checkpoints load.
+            self.has_residual = in_channels == out_channels
+            self.res_down = nn.Conv2d(
+                in_channels, out_channels, kernel_size=1, stride=stride
+            )
 
         self.conv_dilated = CausalConv2d(
             in_channels=in_channels,
@@ -74,10 +90,10 @@ class ModuleWavenet(nn.Module):
         # x_res = x_skip + x_old[:, :, : x_skip.size(2), :]
 
         # skip-connection (NEW, REPLACES ABOVE - NATE)
-        if self.in_channels != self.out_channels:
-            x_res = x_skip
-        else:
+        if self.has_residual:
             x_res = self.res_down(x_old) + x_skip
+        else:
+            x_res = x_skip
 
         return x_res, x_skip
 
@@ -91,6 +107,7 @@ class GWaveNet2DModified_causal_fix(nn.Module):
         dilation,
         stride,
         input_len=155648,
+        residual_fix=False,
     ):
         super().__init__()
 
@@ -100,6 +117,7 @@ class GWaveNet2DModified_causal_fix(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             dilation=dilation**0,
+            residual_fix=residual_fix,
         )
         self.Mod1 = ModuleWavenet(
             in_channels=32,
@@ -107,6 +125,7 @@ class GWaveNet2DModified_causal_fix(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             dilation=dilation**1,
+            residual_fix=residual_fix,
         )
         self.Mod2 = ModuleWavenet(
             in_channels=32,
@@ -114,6 +133,7 @@ class GWaveNet2DModified_causal_fix(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             dilation=dilation**2,
+            residual_fix=residual_fix,
         )
         self.Mod3 = ModuleWavenet(
             in_channels=32,
@@ -121,6 +141,7 @@ class GWaveNet2DModified_causal_fix(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             dilation=dilation**3,
+            residual_fix=residual_fix,
         )
         self.Mod4 = ModuleWavenet(
             in_channels=32,
@@ -128,6 +149,7 @@ class GWaveNet2DModified_causal_fix(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             dilation=dilation**4,
+            residual_fix=residual_fix,
         )
         self.Mod5 = ModuleWavenet(
             in_channels=32,
@@ -135,6 +157,7 @@ class GWaveNet2DModified_causal_fix(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             dilation=dilation**5,
+            residual_fix=residual_fix,
         )
         self.Mod6 = ModuleWavenet(
             in_channels=32,
@@ -142,6 +165,7 @@ class GWaveNet2DModified_causal_fix(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             dilation=dilation**6,
+            residual_fix=residual_fix,
         )
 
         conv1x1_out_channels = 1

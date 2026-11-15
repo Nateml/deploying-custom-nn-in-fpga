@@ -7,4 +7,7 @@ stride: 2
 # module i uses dilation**i. With 2, vai_c_xir aborts with an unlabeled FATAL
 # error (nn/compile.log); with 1 the whole model compiles onto one DPU subgraph.
 dilation: 1
+# residual connections in Mod1-6 (false: only Mod5, as in checkpoints trained before
+# 2026-11-15, which need false to load; distill.py saves the config in its checkpoints)
+residual_fix: true
 pos_weight: 0.1    # BCEWithLogitsLoss pos_weight
