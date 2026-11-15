@@ -10,7 +10,7 @@ arguments        = $(args:main.py)
 accounting_group = gravwav
 
 request_gpus     = 1
-request_cpus     = 4
+request_cpus     = 2
 request_memory   = 16G
 
 logdir           = /data/gravwav/nmacdona/earlywarningfpgas/output/condor
