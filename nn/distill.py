@@ -193,6 +193,12 @@ def main():
         help="out_channels of a GWaveNet student, ignored for GregNet "
         "(default: from models/configs/<student>.yaml)",
     )
+    parser.add_argument(
+        "--head-channels",
+        type=int,
+        help="channels per time position going into fc1, causal_fix student only "
+        "(default: from models/configs/<student>.yaml)",
+    )
     parser.add_argument("--temperature", type=float, default=2.0)
     parser.add_argument(
         "--alpha", type=float, default=0.7, help="weight of the soft loss (0..1)"
@@ -248,6 +254,8 @@ def main():
         args.filters = student_config.get("out_channels")
     else:
         student_config["out_channels"] = args.filters
+    if args.head_channels is not None:
+        student_config["head_channels"] = args.head_channels
     student, pos_weight = build_model(args.student, **student_config)
     student.to(device)
     pos_weight = torch.tensor(pos_weight, device=device)
@@ -264,6 +272,8 @@ def main():
         architecture += f"{student_config['dilation']}dilation_"
     if student_config.get("residual_fix"):
         architecture += "resfix_"
+    if student_config.get("head_channels", 1) != 1:
+        architecture += f"{student_config['head_channels']}head_"
     filename = (
         f"distilled_{args.student}_{architecture}from_{teacher_name}_"
         f"{args.temperature}T_{args.alpha}alpha_{args.lr}lr_{args.minibatch_size}minibatch"

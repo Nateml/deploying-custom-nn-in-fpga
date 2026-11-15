@@ -65,6 +65,7 @@ loss = alpha · soft + (1 − alpha) · hard
 | `--teacher-model` | from filename | Teacher class, if it can't be read from the filename |
 | `--student` | `GWaveNet2DModified_causal_fix` | Any class known to `evaluate.py` |
 | `--filters` | from the student's config | Student width (GWaveNet students only; GregNet is fixed) |
+| `--head-channels` | from the student's config (1) | Channels per time position going into `fc1` (causal_fix student only). Each extra channel adds about 61k `fc1` weights |
 | `--temperature` | 2.0 | `T` |
 | `--alpha` | 0.7 | Weight of the soft loss |
 | `--epochs` | 20 | Max epochs **per stage** |

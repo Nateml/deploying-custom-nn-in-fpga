@@ -108,6 +108,7 @@ class GWaveNet2DModified_causal_fix(nn.Module):
         stride,
         input_len=155648,
         residual_fix=False,
+        head_channels=1,
     ):
         super().__init__()
 
@@ -168,7 +169,9 @@ class GWaveNet2DModified_causal_fix(nn.Module):
             residual_fix=residual_fix,
         )
 
-        conv1x1_out_channels = 1
+        # channels per time position going into fc1 (1 in checkpoints trained before
+        # 2026-11-15); fc1 grows by target_len * 50 weights per extra channel
+        conv1x1_out_channels = head_channels
         self.conv_1x1 = nn.Conv2d(
             in_channels=32, out_channels=conv1x1_out_channels, kernel_size=(1, 1)
         )
@@ -185,7 +188,7 @@ class GWaveNet2DModified_causal_fix(nn.Module):
         self.flatten = nn.Flatten()
 
         # self.fc1 = nn.Linear(1302, 50)
-        self.fc1 = nn.Linear(self.target_len * conv1x1_out_channels, 50)  # 1216 * 1
+        self.fc1 = nn.Linear(self.target_len * conv1x1_out_channels, 50)  # 1216 * C
 
         self.fc2 = nn.Linear(50, 1)
 
