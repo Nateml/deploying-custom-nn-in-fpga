@@ -1,7 +1,10 @@
 """Evaluate a trained checkpoint on the curriculum test set.
 
 Runs the model over every test batch of every curriculum folder, prints accuracy,
-loss, confusion matrix and ROC AUC per folder and overall, and writes the
+loss, confusion matrix and ROC AUC per folder and overall, then accuracy and
+true positive rate at the threshold that gives a false alarm probability (FAP) of
+--fap (1% by default, the level used in the paper) on all validation noise, and
+writes the
 probabilities in the "label: probability: PISNR" format that
 figures/plotting.ipynb reads (see figures/data/probabilities/).
 
@@ -38,8 +41,8 @@ def model_from_filename(path):
     return None
 
 
-def n_test_batches(folder):
-    pattern = re.compile(rf"test_folder{folder}_batch(\d+)\.npz")
+def n_batches(split, folder):
+    pattern = re.compile(rf"{split}_folder{folder}_batch(\d+)\.npz")
     return sum(bool(pattern.fullmatch(f)) for f in os.listdir(TEST_DATA_DIR))
 
 
@@ -72,6 +75,33 @@ def report(tag, labels, probabilities, loss):
     )
 
 
+def fap_threshold(model, device, fap, batches, minibatch_size, split="validation"):
+    """Threshold above which a fraction fap of the noise samples of split lies,
+    over all folders (one threshold, as a deployed detector would use)."""
+    noise = []
+    with torch.no_grad():
+        for folder in range(FOLDER + 1):
+            n = n_batches(split, folder)
+            if batches is not None:
+                n = min(n, batches)
+            for batch_n in range(n):
+                print(f"Folder {folder}, {split} batch {batch_n + 1}/{n}")
+                for X, y in into_dataloader(
+                    "pc", "", split, batch_n, minibatch_size, folder
+                ):
+                    pred = model(X.to(device).float()).squeeze(1)
+                    noise.append(torch.sigmoid(pred).cpu().numpy()[y.numpy() == 0])
+    return np.quantile(np.concatenate(noise), 1 - fap)
+
+
+def report_at_threshold(tag, labels, probabilities, threshold):
+    detected = probabilities > threshold
+    accuracy = 100 * np.mean(detected == (labels == 1))
+    tpr = 100 * np.mean(detected[labels == 1])
+    fap = 100 * np.mean(detected[labels == 0])
+    print(f"{tag}: accuracy {accuracy:.2f}%, TPR {tpr:.2f}%, FAP {fap:.2f}%")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("checkpoint", help="path to a .pt file saved by main.py")
@@ -90,6 +120,12 @@ def main():
         type=int,
         help="out_channels of a GWaveNet model, e.g. a distilled student "
         "(default: from models/configs/<model>.yaml)",
+    )
+    parser.add_argument(
+        "--fap",
+        type=float,
+        default=0.01,
+        help="false alarm probability that sets the second decision threshold",
     )
     parser.add_argument("--minibatch-size", type=int, default=50)
     parser.add_argument(
@@ -120,13 +156,13 @@ def main():
     with open(output, "w") as out, torch.no_grad():
         for folder in range(FOLDER + 1):
             out.write(f"Folder {folder}\n")
-            n_batches = n_test_batches(folder)
+            n_test = n_batches("test", folder)
             if args.batches is not None:
-                n_batches = min(n_batches, args.batches)
+                n_test = min(n_test, args.batches)
 
             labels, probabilities, losses = [], [], []
-            for batch_n in range(n_batches):
-                print(f"Folder {folder}, test batch {batch_n + 1}/{n_batches}")
+            for batch_n in range(n_test):
+                print(f"Folder {folder}, test batch {batch_n + 1}/{n_test}")
                 dataloader = into_dataloader(
                     "pc", "", "test", batch_n, args.minibatch_size, folder
                 )
@@ -161,12 +197,26 @@ def main():
             all_probabilities.append(probabilities)
             all_losses.extend(losses)
 
-    report(
-        "Overall",
-        np.concatenate(all_labels),
-        np.concatenate(all_probabilities),
-        np.mean(all_losses),
+    labels = np.concatenate(all_labels)
+    probabilities = np.concatenate(all_probabilities)
+    report("Overall", labels, probabilities, np.mean(all_losses))
+
+    # set on validation noise, so the threshold isn't tuned on the test set; the
+    # FAP measured on the test noise then shows how well it carries over
+    threshold = fap_threshold(
+        model, device, args.fap, args.batches, args.minibatch_size
     )
+    print(
+        f"\nAt FAP {100 * args.fap:g}% (threshold {threshold:.4f}, "
+        "set on all validation noise):"
+    )
+    for folder, (folder_labels, folder_probabilities) in enumerate(
+        zip(all_labels, all_probabilities)
+    ):
+        report_at_threshold(
+            f"Folder {folder}", folder_labels, folder_probabilities, threshold
+        )
+    report_at_threshold("Overall", labels, probabilities, threshold)
     print(f"Probabilities written to {output}")
 
 
