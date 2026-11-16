@@ -123,7 +123,7 @@ How to read these files:
 - Use a GPU node. On CPU one data file of training plus one of validation takes about 2 minutes, and a full curriculum run reads several hundred files per epoch.
 - A checkpoint only works with the input length it was trained on (155648). That matters for `compile_check.py`, which uses a shorter input.
 - A good float student still has to pass the DPU inspector and the compiler, and its accuracy should be checked again after INT8 quantization. Quantization can cost small models relatively more accuracy.
-- `training/train_model.py` (used by `main.py`) uses `time_left` without defining it and crashes after its first validation pass. `distill.py` doesn't use that code.
+- `main.py` saves its training state after every epoch (`OUTPUT_DIR/models/<filename>_resume.pt`). If a job is killed, submitting it again with the same settings continues from the last finished epoch and appends to the same log. Delete that file to start from scratch. `distill.py` has no resume yet, but rewrites its checkpoint after every stage.
 
 ## Possible next steps
 

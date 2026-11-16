@@ -1,6 +1,6 @@
+import copy
 import gc
 import os
-import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,7 +10,6 @@ import torch
 from data_prep import into_dataloader, prefetched
 from models.globals import (
     FOLDER,
-    LEARNING_RATE,
     MODEL,
     TEST_MINIBATCH_SIZE,
 )
@@ -18,6 +17,18 @@ from training.utils import confusion_matrix, print_or_output
 
 # array size of old data
 BATCH_ARRAY_SIZE = 200
+
+
+def resume_path(output_dir, filename):
+    """Training state saved after every epoch. If it exists, train_model continues
+    from it; delete it to start from scratch. Removed when training finishes."""
+    return f"{output_dir}models/{filename}_resume.pt"
+
+
+def save_resume_state(path, **state):
+    # write to a temporary file first, so a job killed mid-save keeps the old state
+    torch.save(state, f"{path}.tmp")
+    os.replace(f"{path}.tmp", path)
 
 
 def train_model(
@@ -54,7 +65,47 @@ def train_model(
 
     torch.cuda.empty_cache()
 
-    for current_folder in range(0, FOLDER + 1):
+    history = (
+        train_accuracies,
+        train_accuracies_stdev,
+        train_losses,
+        train_losses_stdev,
+        validation_accuracies,
+        validation_accuracies_stdev,
+        validation_losses,
+        validation_losses_stdev,
+        best_epoch,
+    )
+
+    initial_lr = optimizer.param_groups[0]["lr"]
+    final_epoch = epochs
+    start_folder, start_epoch, stage = 0, 0, None
+
+    resume_file = resume_path(output_dir, filename)
+    if os.path.exists(resume_file):
+        state = torch.load(resume_file, map_location=device)
+        model.load_state_dict(state["model_state_dict"])
+        optimizer.load_state_dict(state["optimizer_state_dict"])
+        for current, saved in zip(history, state["history"]):
+            current.update(saved)
+        initial_lr = state["initial_lr"]
+        final_epoch = state["final_epoch"]
+        total_n_flops = state["total_n_flops"]
+        save_flops = state["save_flops"]
+        save_loss = state["save_loss"]
+        start_folder, start_epoch, stage = (
+            state["folder"],
+            state["epoch"],
+            state["stage"],
+        )
+        print_or_output(
+            f"Resuming from {resume_file}: folder {start_folder}, epoch {start_epoch + 1}",
+            d,
+            out_file,
+        )
+        del state
+
+    for current_folder in range(start_folder, FOLDER + 1):
 
         # adaptive learning rate
         if (
@@ -63,19 +114,31 @@ def train_model(
             or MODEL == "GWaveNet2DModified"
         ):
             for g in optimizer.param_groups:
-                g["lr"] = LEARNING_RATE / (current_folder + 1)
+                g["lr"] = initial_lr / (current_folder + 1)
 
         print_or_output(f"Folder {current_folder}", d, out_file)
 
-        min_validation_loss = np.inf
-        final_epoch = epochs
+        first_epoch = 0
+        if stage is not None:
+            # resuming in the middle of this stage
+            first_epoch = start_epoch
+            min_validation_loss = stage["min_validation_loss"]
+            early_stopping_counter = stage["early_stopping_counter"]
+            best_loss = stage["best_loss"]
+            best_accuracy = stage["best_accuracy"]
+            best_model_state_dict = stage["best_model_state_dict"]
+            stage = None
+        else:
+            min_validation_loss = np.inf
+            early_stopping_counter = 0
+            final_epoch = epochs
 
-        if current_folder > 0:
-            bestmodel_checkpoint = torch.load(f"{output_dir}models/{filename}.pt")
-            bestmodel = model.to(device)
-            bestmodel.load_state_dict(bestmodel_checkpoint["model_state_dict"])
+            if current_folder > 0:
+                bestmodel_checkpoint = torch.load(f"{output_dir}models/{filename}.pt")
+                bestmodel = model.to(device)
+                bestmodel.load_state_dict(bestmodel_checkpoint["model_state_dict"])
 
-        for epoch in range(epochs):
+        for epoch in range(first_epoch, epochs):
             print_or_output(
                 f"Used RAM at the beginning of epoch: {(psutil.virtual_memory().used * 1e-9):.2} Gb",
                 d,
@@ -284,12 +347,6 @@ def train_model(
                 torch.std(loss_full_epoch)
             )
 
-            t2 = time.time()
-
-            hours_left = int(time_left / 3600)
-            minutes_left = int((time_left - hours_left * 3600) / 60)
-            seconds_left = int(time_left - hours_left * 3600 - minutes_left * 60)
-
             tap = []
             fap = []
 
@@ -363,7 +420,7 @@ def train_model(
                     best_accuracy = np.round(
                         validation_accuracies[f"folder {current_folder}"][-1], 4
                     )
-                    best_model_state_dict = model.state_dict()
+                    best_model_state_dict = copy.deepcopy(model.state_dict())
 
                 if validation_losses[f"folder {current_folder}"][-1] < best_loss or (
                     validation_losses[f"folder {current_folder}"][-1] == best_loss
@@ -377,13 +434,13 @@ def train_model(
                     best_accuracy = np.round(
                         validation_accuracies[f"folder {current_folder}"][-1], 4
                     )
-                    best_model_state_dict = model.state_dict()
+                    best_model_state_dict = copy.deepcopy(model.state_dict())
             elif (
                 MODEL == "GregNet"
                 or MODEL == "GregNet2D"
                 or MODEL == "GregNet2DModified"
             ):
-                best_model_state_dict = model.state_dict()
+                best_model_state_dict = copy.deepcopy(model.state_dict())
                 best_epoch[f"folder {current_folder}"] = epoch + 1
                 best_loss = np.round(
                     validation_losses[f"folder {current_folder}"][-1], 4
@@ -391,6 +448,27 @@ def train_model(
                 best_accuracy = np.round(
                     validation_accuracies[f"folder {current_folder}"][-1], 4
                 )
+
+            save_resume_state(
+                resume_file,
+                folder=current_folder,
+                epoch=epoch + 1,
+                stage={
+                    "min_validation_loss": min_validation_loss,
+                    "early_stopping_counter": early_stopping_counter,
+                    "best_loss": best_loss,
+                    "best_accuracy": best_accuracy,
+                    "best_model_state_dict": best_model_state_dict,
+                },
+                model_state_dict=model.state_dict(),
+                optimizer_state_dict=optimizer.state_dict(),
+                history=history,
+                initial_lr=initial_lr,
+                final_epoch=final_epoch,
+                total_n_flops=total_n_flops,
+                save_flops=save_flops,
+                save_loss=save_loss,
+            )
 
             torch.cuda.empty_cache()
 
@@ -408,6 +486,22 @@ def train_model(
         torch.save(
             {"model_state_dict": best_model_state_dict},
             model_save_path,
+        )
+
+        # the next stage starts from the best model saved above
+        save_resume_state(
+            resume_file,
+            folder=current_folder + 1,
+            epoch=0,
+            stage=None,
+            model_state_dict=model.state_dict(),
+            optimizer_state_dict=optimizer.state_dict(),
+            history=history,
+            initial_lr=initial_lr,
+            final_epoch=final_epoch,
+            total_n_flops=total_n_flops,
+            save_flops=save_flops,
+            save_loss=save_loss,
         )
 
     # load the model of the best epoch
@@ -515,10 +609,11 @@ def train_model(
     cfm = np.array([[tp, fp], [fn, tn]])
 
     torch.save(
-        {"model_state_dict": best_model_state_dict},
+        bestmodel_checkpoint,
         f"{output_dir}models/{test_accuracy}_{filename}.pt",
     )
     os.remove(f"{output_dir}models/{filename}.pt")
+    os.remove(resume_file)
 
     return (
         train_accuracies,

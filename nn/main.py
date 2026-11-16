@@ -37,7 +37,7 @@ from training.generate_outputs import (
     save_flop_text,
     save_text_output,
 )
-from training.train_model import train_model
+from training.train_model import resume_path, train_model
 from training.utils import print_or_output
 
 # initial parameters for running the program
@@ -111,7 +111,9 @@ if d == "pc":
 elif d == "cluster":
     output_dir = OUTPUT_DIR
     out_file = f"{output_dir}prints/{filename}.txt"
-    with open(out_file, "w") as f:
+    # a resumed run appends to the log of the run it continues
+    log_mode = "a" if os.path.exists(resume_path(output_dir, filename)) else "w"
+    with open(out_file, log_mode) as f:
         f.write(f"Using device: {device}\n")
 
 print_or_output(
