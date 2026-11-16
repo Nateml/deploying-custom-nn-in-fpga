@@ -10,10 +10,12 @@ TRAIN_DATA_DIR = (
 VALID_DATA_DIR = "/dcache/gravwav/lopezm/ML_projects/Projects_GW/EarlyWarning/Data_new/FreqCL_O3_validation/"
 TEST_DATA_DIR = "/dcache/gravwav/lopezm/ML_projects/Projects_GW/EarlyWarning/Data_new/FreqCL_O3_test/"
 
-OUTPUT_DIR = "/data/gravwav/amartins/earlywarningfpgas/output/"
+# OUTPUT_DIR = "/data/gravwav/amartins/earlywarningfpgas/output/"  # original author
+OUTPUT_DIR = "/data/gravwav/nmacdona/earlywarningfpgas/output/"
 MODEL_PATH = "/home/anaismartins/Desktop/earlywarningfpgas/output/models/50.0_curriculum_ModifiedPaperNet_3epochs_10samples_8e-05lr_50_minibatch_AdamaxGregoptimizer_0.16decayfactor_128patience_0.01early_stopping_delta_128patience.pt"
 
-MODEL = "GregNet"
+# MODEL = "GregNet"
+MODEL = "GWaveNet2D"
 # MODEL = "GWaveNet2DModified"
 FILENAME_ADD = ""
 
@@ -31,7 +33,7 @@ if MODEL == "GregNet" or MODEL == "GregNet2D" or MODEL == "GregNet2DModified":
 elif MODEL == "GWaveNet" or MODEL == "GWaveNet2D" or MODEL == "GWaveNet2DModified":
     EPOCHS = 20
     TEST_MINIBATCH_SIZE = 200
-    LEARNING_RATE = 1e-5
+    LEARNING_RATE = 2e-5  # the distillation teacher was trained with 1e-5
     OPTIMIZER_NAME = "AdamW"
     EARLY_STOPPING_PATIENCE = 2
 
