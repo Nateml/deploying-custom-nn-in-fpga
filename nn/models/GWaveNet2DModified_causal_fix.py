@@ -107,7 +107,7 @@ class GWaveNet2DModified_causal_fix(nn.Module):
         dilation,
         stride,
         input_len=155648,
-        residual_fix=False,
+        residual_fix=True,
         head_channels=1,
     ):
         super().__init__()
