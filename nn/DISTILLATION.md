@@ -7,7 +7,7 @@
 Run everything from `nn/`, inside the container:
 
 ```bash
-# defaults: GWaveNet2D teacher from ../models/, causal_fix student with 64 filters, curriculum
+# defaults: retrained GWaveNet2D teacher (80/13/22 files, 79.10% at FAP 1%), causal_fix student with 64 filters, curriculum
 vai python distill.py
 
 # a smaller student with softer targets
@@ -16,12 +16,19 @@ vai python distill.py --filters 16 --temperature 4
 # one stage on all folders instead of the curriculum
 vai python distill.py --no-curriculum
 
+# four seeds in one job (about as fast as one, since loading the data is the slow part)
+vai python distill.py --seeds 1 2 3 4
+
 # smoke test (about 2 min on CPU)
 vai python distill.py --folders 0 --epochs 1 --train-batches 1 --val-batches 1 --filters 8 \
     --output /tmp/smoke.pt
 
 # full run on a GPU node
 condor_submit condor/job.sub 'args=distill.py --filters 16'
+
+# one student per seed as a chain of short (4 h) jobs that resume each other
+python3 condor/distill_dag.py kd --seeds 1 2 3 4 5 -- --lr 1e-4
+condor_submit_dag /data/gravwav/nmacdona/earlywarningfpgas/output/condor/dags/kd.dag
 
 # short lr sweep (1e-5, 3e-5, 1e-4, 3e-4, 1e-3), about 1 h per job -> ../models/lr_sweep/
 condor_submit condor/lr_sweep.sub
@@ -34,7 +41,7 @@ The causal_fix config sets `residual_fix: true` (residual connections in Mod1–
 Then evaluate the student like any other checkpoint. The architecture, including `--filters`, comes from the checkpoint:
 
 ```bash
-vai python evaluate.py ../models/curriculum_distilled_<...>.pt
+vai python evaluate.py ../models/curriculum_distilled_<...>_seed42.pt
 ```
 
 If you used a custom `--output` name, also pass `--model GWaveNet2DModified_causal_fix`, because `evaluate.py` reads the model class from the filename.
@@ -61,7 +68,7 @@ loss = alpha · soft + (1 − alpha) · hard
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--teacher` | GWaveNet2D checkpoint in `../models/` | Teacher checkpoint saved by `main.py` |
+| `--teacher` | retrained GWaveNet2D in `OUTPUT_DIR/models/` (before 2026-11-18: the 79.6 checkpoint in `../models/`) | Teacher checkpoint saved by `main.py` |
 | `--teacher-model` | from filename | Teacher class, if it can't be read from the filename |
 | `--student` | `GWaveNet2DModified_causal_fix` | Any class known to `evaluate.py` |
 | `--filters` | from the student's config | Student width (GWaveNet students only; GregNet is fixed) |
@@ -71,13 +78,19 @@ loss = alpha · soft + (1 − alpha) · hard
 | `--epochs` | 20 | Max epochs **per stage** |
 | `--lr` | 1e-5 | AdamW learning rate |
 | `--no-lr-decay` | off | Keep lr fixed across curriculum stages |
+| `--cosine`, `--min-lr` | off, 0 | In the last stage (the only one with `--no-curriculum`), lower the lr per epoch along a cosine, from the stage's lr at the first epoch to `--min-lr` after epoch `--epochs`. Adds `_cosine<min-lr>minlr` to the name. Early stopping still applies, so with the default `--patience` 2 a run usually stops before the lr has come down much; raise `--patience` (e.g. to `--epochs`) to run the whole schedule and keep the best epoch |
 | `--patience`, `--min-delta` | 2, 1e-4 | Early stopping on the validation loss |
 | `--folders` | 4 | Last folder used (0 = folder 0 only) |
 | `--no-curriculum` | off | See above |
-| `--train-batches`, `--val-batches` | 40, 5 | Data files per folder (as in `train_model.py`; 100 and 13 exist) |
-| `--output` | `../models/{curriculum,no_curriculum}_distilled_<args>.pt` | Where the student is saved |
+| `--seeds` | 42 | One student per seed, trained side by side on the same data files (see below) |
+| `--data-seed` | 42 | Order of the data files with `--no-curriculum`, the same for all seeds |
+| `--train-batches`, `--val-batches` | 80, 13 | Data files per folder (`TRAIN_FILES`, `VALIDATION_FILES` in `models/globals.py`, as in `train_model.py`). Added to the name as `_<train>-<val>files`. Runs before 2026-11-18 used 40 and 5 |
+| `--time-limit` | none | Hours. Stops after the last epoch expected to end within it (state saved, exit code 3), so the next job can resume |
+| `--output` | `../models/{curriculum,no_curriculum}_distilled_<args>_seed<seed>.pt` | Where the student is saved. With several seeds, `_seed<seed>` is added before `.pt` |
 
-The checkpoint holds `model_state_dict` (so `evaluate.py` can load it), plus `model`, `filters`, `teacher`, `temperature`, `alpha`, `folders` and `curriculum`. It is rewritten after every stage, so a stopped run still leaves the last finished stage on disk.
+The checkpoint holds `model_state_dict` (so `evaluate.py` can load it), plus `model`, `filters`, `config`, `teacher`, `temperature`, `alpha`, `seed`, `data_seed`, `folders` and `curriculum`. It is rewritten after every stage, so a stopped run still leaves the last finished stage on disk.
+
+**Seeds.** With `--seeds 1 2 3 4`, every data file is loaded once and each student trains on it in turn, so the seeds share the slow part (reading the data). The GPU part is about 0.5 s per file per student on an L40S (estimated), against 2.7–4 s to load a file. So up to about 4 seeds take roughly as long as one, and each student needs about 14 GB of GPU memory at most while it runs (they take turns). The seed sets the initial weights and the minibatch order within each file. The order of the files comes from `--data-seed` and is the same for every seed in the job, so a seed gives the same result whether it runs alone or with others, apart from the GPU's own run-to-run noise, which is about 0.5% in the metrics after an epoch. Each student has its own early stopping: one that has stopped keeps its best model and sits out, and a stage ends when all have stopped (in the curriculum all students then move to the next stage together). Runs from before `--seeds` (no `_seed` in the name) used one global seed for everything and can't be reproduced exactly.
 
 ## Training history
 
@@ -123,7 +136,7 @@ How to read these files:
 - Use a GPU node. On CPU one data file of training plus one of validation takes about 2 minutes, and a full curriculum run reads several hundred files per epoch.
 - A checkpoint only works with the input length it was trained on (155648). That matters for `compile_check.py`, which uses a shorter input.
 - A good float student still has to pass the DPU inspector and the compiler, and its accuracy should be checked again after INT8 quantization. Quantization can cost small models relatively more accuracy.
-- `main.py` saves its training state after every epoch (`OUTPUT_DIR/models/<filename>_resume.pt`). If a job is killed, submitting it again with the same settings continues from the last finished epoch and appends to the same log. Delete that file to start from scratch. `distill.py` has no resume yet, but rewrites its checkpoint after every stage.
+- `main.py` saves its training state after every epoch (`OUTPUT_DIR/models/<filename>_resume.pt`). If a job is killed, submitting it again with the same settings continues from the last finished epoch and appends to the same log. Delete that file to start from scratch. `distill.py` saves its state after every epoch too, in `<output>_resume.pt` (for several seeds in one job: `..._seeds1-2-3_resume.pt`), and continues from it when started again with the same arguments; delete it to start from scratch. The teacher logits computed so far are saved with it. `condor/distill_dag.py` uses this with `--time-limit 3.5` to train each seed as a chain of short jobs: DAGMan resubmits a node that exits with code 3 or is killed, but not one that crashed in Python (exit code 1).
 
 ## Possible next steps
 
