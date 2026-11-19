@@ -25,10 +25,10 @@ from torch import nn
 from data_prep import into_dataloader
 from models.config import MODEL_NAMES as MODELS
 from models.config import build_model
-from models.globals import FOLDER
+from models.globals import DATA_FILES_DIR, FOLDER
 from training.utils import confusion_matrix
 
-TEST_DATA_DIR = "/data/gravwav/amartins/earlywarningfpgas/parsed_data/new_data/"
+TEST_DATA_DIR = DATA_FILES_DIR
 # column of the test_params arrays holding the PISNR of each sample
 PISNR_COLUMN = 3
 

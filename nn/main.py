@@ -30,6 +30,9 @@ from models.globals import (
     MODEL,
     OPTIMIZER_NAME,
     OUTPUT_DIR,
+    TEST_FILES,
+    TRAIN_FILES,
+    VALIDATION_FILES,
 )
 from models.config import MODEL_NAMES, build_model, load_config
 from training.generate_outputs import (
@@ -96,7 +99,7 @@ elif MODEL == "GWaveNet" or MODEL == "GWaveNet2D" or MODEL == "GWaveNet2DModifie
 else:
     filename = f"{MODEL}_{num_epochs}epochs_{LEARNING_RATE}lr_{filters}filters_{KERNEL_SIZE_CONVOLUTION}conv_{KERNEL_SIZE_MAXPOOL}maxpool_{DILATION}dilation_{PADDING}padding_{STRIDE}stride_{DROPOUT}dropout_{ACTIVATION}activation_{MINIBATCH_SIZE}minibatch_{OPTIMIZER_NAME}optimizer"  # _{LR_DECAY_FACTOR}decayfactor_{LR_DECAY_PATIENCE}patience_{EARLY_STOPPING_MIN_DELTA}early_stopping_delta_{EARLY_STOPPING_PATIENCE}patience"
 
-filename = f"{filename}{FILENAME_ADD}"
+filename = f"{filename}_{TRAIN_FILES}-{VALIDATION_FILES}-{TEST_FILES}files{FILENAME_ADD}"
 
 if FOLDER == 4:
     filename = f"curriculum_{filename}"

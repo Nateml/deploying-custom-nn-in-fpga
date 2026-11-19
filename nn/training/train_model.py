@@ -11,11 +11,14 @@ from data_prep import into_dataloader, prefetched
 from models.globals import (
     FOLDER,
     MODEL,
+    TEST_FILES,
     TEST_MINIBATCH_SIZE,
+    TRAIN_FILES,
+    VALIDATION_FILES,
 )
 from training.utils import confusion_matrix, print_or_output
 
-# array size of old data
+# samples per data file (100 noise + 100 signal)
 BATCH_ARRAY_SIZE = 200
 
 
@@ -151,7 +154,7 @@ def train_model(
             y_full_epoch = torch.empty(0)
             loss_full_epoch = torch.empty(0)
 
-            n_samples_train = int(10000 * 0.8)
+            n_samples_train = TRAIN_FILES * BATCH_ARRAY_SIZE
             # reads the next data file in the background while training on the current one
             train_dataloaders = prefetched(
                 lambda f, b: into_dataloader(
@@ -251,8 +254,7 @@ def train_model(
             # change mode into evaluation mode so the model doesn't learn from the validation set
             model.eval()
 
-            # n_samples_val = 1300
-            n_samples_val = int(10000 * 0.1)
+            n_samples_val = VALIDATION_FILES * BATCH_ARRAY_SIZE
 
             pred_labels_full_epoch = torch.empty(0)
             y_full_epoch = torch.empty(0)
@@ -516,8 +518,7 @@ def train_model(
     loss_full_epoch = torch.empty(0)
     probabilities_full_epoch = torch.empty(0)
 
-    # n_samples_test = 2200
-    n_samples_test = int(10000 * 0.1)
+    n_samples_test = TEST_FILES * BATCH_ARRAY_SIZE
 
     test_dataloaders = prefetched(
         lambda f, b: into_dataloader(

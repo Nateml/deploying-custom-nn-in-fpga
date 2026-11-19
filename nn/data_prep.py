@@ -13,6 +13,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 
 from models.globals import (
+    DATA_FILES_DIR,
     TRAIN_DATA_DIR,
     VALID_DATA_DIR,
     TEST_DATA_DIR,
@@ -46,29 +47,14 @@ def prefetched(load, args_list):
 def into_dataloader(d, out_file, batch, batch_n, minibatch_size, current_folder):
     # load the data
 
-    if batch == "train":
-        noise = np.load(
-            # f"/data/gravwav/amartins/earlywarningfpgas/parsed_data/new_files/10000/train_folder{current_folder}.npz"
-            f"/data/gravwav/amartins/earlywarningfpgas/parsed_data/new_data/train_folder{current_folder}_batch{batch_n}.npz"
-        )[f"noise"]
-    else:
-        noise = np.load(
-            # f"/data/gravwav/amartins/earlywarningfpgas/parsed_data/new_files/10000/{batch}.npz"
-            f"/data/gravwav/amartins/earlywarningfpgas/parsed_data/new_data/{batch}_folder{current_folder}_batch{batch_n}.npz"
-        )[f"noise"]
-    # get zero vector of the same size
-
-    if batch == "train":
-        signal = np.load(
-            # f"/data/gravwav/amartins/earlywarningfpgas/parsed_data/new_files/10000/train_folder{current_folder}.npz"
-            f"/data/gravwav/amartins/earlywarningfpgas/parsed_data/new_data/train_folder{current_folder}_batch{batch_n}.npz"
-        )[f"signal"]
-    else:
-        signal = np.load(
-            # f"/data/gravwav/amartins/earlywarningfpgas/parsed_data/new_files/10000/{batch}.npz"
-            f"/data/gravwav/amartins/earlywarningfpgas/parsed_data/new_data/{batch}_folder{current_folder}_batch{batch_n}.npz"
-        )[f"signal"]
-    # get vector of ones of the same size
+    # batch is "train", "validation" or "test"
+    with np.load(
+        f"{DATA_FILES_DIR}{batch}_folder{current_folder}_batch{batch_n}.npz"
+    ) as data:
+        # float32 holds the float16 (and float64) files exactly, and numpy is slow
+        # at checking float16 arrays; the models use float32 anyway
+        noise = data["noise"].astype(np.float32)
+        signal = data["signal"].astype(np.float32)
 
     if np.isnan(noise).any():
         print_or_output("Noise contains NaN values", d, out_file)
